@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Bash(pip --version)",
+      "Bash(npm init -y)",
+      "Bash(npm install @supabase/supabase-js openai twilio node-cron express zod pino dotenv)",
+      "Bash(npm install -D typescript tsx @types/node @types/express @types/node-cron pino-pretty)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(node -e \":*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/nullclaw/nullclaw/main/src/channels/whatsapp.zig\")",
+      "Bash(npm uninstall:*)",
+      "Bash(npm install:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(timeout 10 npx tsx src/index.ts)",
+      "Bash(where npx:*)",
+      "Bash(where tsx:*)",
+      "Bash(where node:*)",
+      "Bash(ls \"C:\\\\DDrive\\\\Programming\\\\Project\\\\misc\\\\MessengerOfGod\\\\node_modules\\\\.bin\\\\tsx\"*)",
+      "Bash(node -e \"console.log\\(process.execPath\\)\")",
+      "Bash(find C:DDriveProgrammingProjectmiscMessengerOfGodnode_modules.bin -name tsx*)",
+      "Bash(tasklist)",
+      "Bash(curl -s http://localhost:4040/api/tunnels)",
+      "Bash(npx tsx:*)",
+      "Bash(New-Item -Path \"C:\\\\DDrive\\\\Programming\\\\Project\\\\misc\\\\MessengerOfGod\\\\.gitignore\" -ItemType File -Force)",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"created\")",
+      "Bash(powershell -Command \"New-Item -Path ''C:\\\\DDrive\\\\Programming\\\\Project\\\\misc\\\\MessengerOfGod\\\\.gitignore'' -ItemType File -Force | Out-Null; Write-Host created\")",
+      "Bash(powershell -Command \"New-Item -Path ''C:\\\\DDrive\\\\Programming\\\\Project\\\\misc\\\\MessengerOfGod\\\\.env.example'' -ItemType File -Force | Out-Null; Write-Host created\")",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
