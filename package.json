@@ -8,7 +8,11 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev:pretty": "tsx src/index.ts | pino-pretty",
-    "send": "tsx scripts/send-test.ts"
+    "send": "tsx scripts/send-test.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "e2e": "tsx scripts/e2e-test.ts"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +36,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "pino-pretty": "^13.1.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }

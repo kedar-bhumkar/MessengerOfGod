@@ -10,6 +10,7 @@ import qrcode from 'qrcode-terminal';
 import type { ChannelInterface, SendResult } from '../channel.interface.js';
 import { configRepository } from '../../db/config.repository.js';
 import { messageRepository } from '../../db/message.repository.js';
+import { logConnectionEvent } from '../../db/events.repository.js';
 import { env } from '../../env.js';
 import { logger } from '../../utils/logger.js';
 
@@ -152,6 +153,12 @@ export class WhatsAppChannel implements ChannelInterface {
   // Counts consecutive failed reconnects so we can back off intelligently.
   private reconnectAttempts = 0;
 
+  // Timestamp of the most recent successful connection open.
+  private lastConnectedAt: Date | null = null;
+
+  // Phone number we are connected as (e.g. "919764143433").
+  private connectedAs: string | null = null;
+
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   async initialize(): Promise<void> {
@@ -163,6 +170,17 @@ export class WhatsAppChannel implements ChannelInterface {
 
   async isHealthy(): Promise<boolean> {
     return this.connected;
+  }
+
+  /** Returns a snapshot of the WhatsApp connection state for the /health endpoint. */
+  getStatus() {
+    return {
+      connected:         this.connected,
+      connectedAs:       this.connectedAs,
+      reconnectAttempts: this.reconnectAttempts,
+      lastConnectedAt:   this.lastConnectedAt?.toISOString() ?? null,
+      lidMapSize:        this.lidToPhone.size,
+    };
   }
 
   async shutdown(): Promise<void> {
@@ -310,9 +328,12 @@ export class WhatsAppChannel implements ChannelInterface {
             clearTimeout(qrTimeout);
             this.connected = true;
             this.reconnectAttempts = 0;
+            this.lastConnectedAt = new Date();
             const me = this.sock?.user;
+            this.connectedAs = me?.id?.split(':')[0] ?? null;
             logger.info({ connectedAs: me?.id, name: me?.name }, 'WhatsApp connected');
             console.log('[WA] Connected as:', me?.id);
+            logConnectionEvent('connected', `connectedAs: ${me?.id ?? 'unknown'}`);
 
             if (!initialised) {
               initialised = true;
@@ -336,6 +357,7 @@ export class WhatsAppChannel implements ChannelInterface {
               clearTimeout(qrTimeout);
               const msg = `WhatsApp logged out. Delete "${env.WHATSAPP_SESSION_DIR}" and restart to re-link.`;
               logger.error(msg);
+              logConnectionEvent('fatal', msg, statusCode);
               if (!initialised) reject(new Error(msg));
               return;
             }
@@ -344,6 +366,7 @@ export class WhatsAppChannel implements ChannelInterface {
               // Corrupted session file — warn loudly but still try to reconnect
               // (useMultiFileAuthState will reload from disk).
               logger.error('Bad session detected — consider deleting the session dir if reconnects keep failing');
+              logConnectionEvent('fatal', 'Bad session — may need QR re-scan', statusCode);
             }
 
             if (!this.closedByUser && RECONNECTABLE_CODES.has(statusCode)) {
@@ -355,6 +378,15 @@ export class WhatsAppChannel implements ChannelInterface {
               logger.info(
                 { attempt: this.reconnectAttempts, delayMs: delay },
                 'Scheduling WhatsApp reconnect',
+              );
+              logConnectionEvent(
+                'disconnected',
+                `statusCode: ${statusCode ?? 'unknown'}`,
+                statusCode,
+              );
+              logConnectionEvent(
+                'reconnecting',
+                `attempt ${this.reconnectAttempts}, delay ${delay}ms`,
               );
               setTimeout(() => boot().catch(err => logger.error({ err }, 'Reconnect boot failed')), delay);
             }

@@ -5,10 +5,21 @@ import { isWithinTimeWindow, getCurrentTimeInZone, randomDelay } from '../utils/
 import { env } from '../env.js';
 import { logger } from '../utils/logger.js';
 
+// Module-level state updated every tick — read by getSchedulerStatus()
+let lastTickAt: string | null = null;
+let lastTickContactsProcessed = 0;
+
+/** Returns the scheduler's last known activity — used by the /health endpoint. */
+export function getSchedulerStatus() {
+  return { lastTickAt, lastTickContactsProcessed };
+}
+
 export function startScheduler(): ScheduledTask {
   const task = cron.schedule(env.SCHEDULER_CRON, async () => {
     try {
       const tickTime = new Date().toISOString();
+      lastTickAt = tickTime;
+      lastTickContactsProcessed = 0;
       logger.info({ tickTime }, '─── Scheduler tick ───────────────────────────────');
 
       // ── Step 1: fetch every contact the SQL function considers due ───────
@@ -68,6 +79,7 @@ export function startScheduler(): ScheduledTask {
           const result = await processContact(contact);
 
           if (result.success) {
+            lastTickContactsProcessed++;
             logger.info(
               `  ✓ "${contact.contact_name}" — message sent${result.message ? `: "${result.message.slice(0, 60)}${result.message.length > 60 ? '…' : ''}"` : ''}`,
             );

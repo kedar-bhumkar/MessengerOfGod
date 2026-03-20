@@ -7,7 +7,7 @@
 import { ChannelInterface } from './channel.interface.js';
 import { logger } from '../utils/logger.js';
 
-class ChannelRegistry {
+export class ChannelRegistry {
   private channels = new Map<string, ChannelInterface>();
 
   /**
