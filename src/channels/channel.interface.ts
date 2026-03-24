@@ -37,6 +37,9 @@ export interface ChannelInterface {
   /** Send a text message to a contact identified by their platform-specific ID. */
   sendMessage(contactId: string, message: string): Promise<SendResult>;
 
+  /** Send an image file to a contact. */
+  sendImage(contactId: string, filePath: string, caption?: string): Promise<SendResult>;
+
   /** Check if the channel is currently connected and healthy. */
   isHealthy(): Promise<boolean>;
 

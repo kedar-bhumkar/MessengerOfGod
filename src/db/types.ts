@@ -31,6 +31,7 @@ export interface Config {
   preferred_time_start: string;
   preferred_time_end: string;
   notes: string | null;
+  action: string;
   created_at: string;
   updated_at: string;
 }
@@ -62,6 +63,7 @@ export interface DueContact {
   preferred_time_start: string;
   preferred_time_end: string;
   notes: string | null;
+  action: string;
   last_message_at: string | null;
   days_since_last_message: number;
 }

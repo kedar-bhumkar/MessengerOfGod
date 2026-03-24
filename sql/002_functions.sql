@@ -27,6 +27,7 @@ RETURNS TABLE (
     preferred_time_start    TEXT,
     preferred_time_end      TEXT,
     notes                   TEXT,
+    action                  TEXT,
     last_message_at         TIMESTAMPTZ,
     days_since_last_message INTEGER
 )
@@ -45,6 +46,7 @@ AS $$
         c.preferred_time_start,
         c.preferred_time_end,
         c.notes,
+        c.action,
         latest.last_message_at,
         COALESCE(
             EXTRACT(DAY FROM (now() - latest.last_message_at))::INTEGER,

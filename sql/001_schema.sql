@@ -53,7 +53,7 @@ CREATE TABLE config (
     created_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ     NOT NULL DEFAULT now(),
 
-    CONSTRAINT uq_channel_contact UNIQUE (channel_type, unique_contact_id)
+    CONSTRAINT uq_channel_contact UNIQUE (unique_contact_id, active, channel_type)
 );
 
 -- Index for quick lookup of active contacts by channel

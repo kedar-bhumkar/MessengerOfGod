@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const envSchema = z.object({
   // Supabase
@@ -11,6 +11,9 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string(),
   OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+
+  // Anthropic (Claude action executor)
+  ANTHROPIC_API_KEY: z.string(),
 
   // WhatsApp (Baileys — personal number via WhatsApp Web protocol)
   // Path to the directory where Baileys saves the linked-device session.

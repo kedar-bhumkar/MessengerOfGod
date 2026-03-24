@@ -1,9 +1,8 @@
 import { channelRegistry } from '../channels/channel.registry.js';
-import { generateMessage } from '../ai/message-generator.js';
+import { executeAction } from '../ai/action-executor.js';
 import { messageRepository } from '../db/message.repository.js';
 import { logger } from '../utils/logger.js';
 import type { DueContact } from '../db/types.js';
-import type { GenerationRequest } from '../ai/prompt-builder.js';
 
 export interface PipelineResult {
   success: boolean;
@@ -15,10 +14,9 @@ export interface PipelineResult {
 /**
  * Process a single due contact through the full message pipeline:
  *   1. Resolve the messaging channel
- *   2. Load recent conversation history
- *   3. Generate a personalized message via AI
- *   4. Send the message through the channel
- *   5. Record the outcome in message history
+ *   2. Execute the contact's action via a Claude sub-agent (bash + return_result tools)
+ *   3. Send the result through the channel (text, image, or file)
+ *   4. Record the outcome in message history
  */
 export async function processContact(dueContact: DueContact): Promise<PipelineResult> {
   const contactLog = {
@@ -34,78 +32,78 @@ export async function processContact(dueContact: DueContact): Promise<PipelineRe
       throw new Error(`No channel registered for type: ${dueContact.channel_type}`);
     }
 
-    // Step 2: Load recent conversation history
-    const conversationHistory = await messageRepository.getRecentMessages(
-      dueContact.config_id,
-      20
-    );
+    // Step 2: Execute the action via Claude sub-agent
+    logger.info({ ...contactLog, action: dueContact.action }, 'Executing action for contact');
+    const result = await executeAction(dueContact, dueContact.action);
 
-    // Step 3: Build the generation request
-    const salutationOptions = dueContact.salutation_phrase
-      ? dueContact.salutation_phrase.split(';').map((s) => s.trim()).filter(Boolean)
-      : [];
+    // Step 3: Send via channel
+    logger.info({ ...contactLog, resultType: result.type }, 'Sending via channel');
+    let sendResult;
+    const messageText = result.type === 'text'
+      ? (result.text ?? '')
+      : (result.caption ?? '');
 
-    const generationRequest: GenerationRequest = {
-      contactName: dueContact.contact_name,
-      relationship: dueContact.relationship,
-      salutationOptions,
-      conversationHistory,
-      notes: dueContact.notes,
-      daysSinceLastMessage: dueContact.days_since_last_message,
-    };
+    if (result.type === 'image' && result.filePath) {
+      sendResult = await channel.sendImage(
+        dueContact.unique_contact_id,
+        result.filePath,
+        result.caption
+      );
+    } else if (result.type === 'file' && result.filePath) {
+      // Fall back to sendMessage with the file path as text until file sending is implemented
+      sendResult = await channel.sendMessage(
+        dueContact.unique_contact_id,
+        result.caption ?? result.filePath
+      );
+    } else {
+      sendResult = await channel.sendMessage(
+        dueContact.unique_contact_id,
+        result.text ?? ''
+      );
+    }
 
-    // Step 4: Generate message via AI
-    logger.info(contactLog, 'Generating message for contact');
-    const generatedMessage = await generateMessage(generationRequest);
-
-    // Step 5: Send via channel
-    logger.info(contactLog, 'Sending message via channel');
-    const sendResult = await channel.sendMessage(
-      dueContact.unique_contact_id,
-      generatedMessage.text
-    );
-
-    // Step 6: Record in message history
+    // Step 4: Record in message history
     const status = sendResult.success ? 'sent' : 'failed';
     await messageRepository.create({
       config_id: dueContact.config_id,
-      message: generatedMessage.text,
+      message: result.type === 'image'
+        ? `[image: ${result.filePath}] ${result.caption ?? ''}`.trim()
+        : (result.text ?? ''),
       direction: 'outbound' as const,
       status,
       error_details: sendResult.error ?? null,
-      ai_model_used: generatedMessage.model,
-      ai_prompt_tokens: generatedMessage.promptTokens,
-      ai_completion_tokens: generatedMessage.completionTokens,
+      ai_model_used: result.model,
+      ai_prompt_tokens: result.promptTokens,
+      ai_completion_tokens: result.completionTokens,
     });
 
     if (!sendResult.success) {
       logger.warn(
         { ...contactLog, error: sendResult.error },
-        'Message generated but failed to send'
+        'Action executed but failed to send'
       );
       return {
         success: false,
         contactName: dueContact.contact_name,
-        message: generatedMessage.text,
+        message: messageText,
         error: sendResult.error ?? 'Send failed with unknown error',
       };
     }
 
     logger.info(
-      { ...contactLog, messageLength: generatedMessage.text.length },
+      { ...contactLog, resultType: result.type },
       'Message sent successfully'
     );
 
     return {
       success: true,
       contactName: dueContact.contact_name,
-      message: generatedMessage.text,
+      message: messageText,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error({ ...contactLog, error: errorMessage }, 'Pipeline failed for contact');
 
-    // Attempt to record the failure in message history
     try {
       await messageRepository.create({
         config_id: dueContact.config_id,

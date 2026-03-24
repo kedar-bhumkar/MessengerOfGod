@@ -225,6 +225,34 @@ export class WhatsAppChannel implements ChannelInterface {
     }
   }
 
+  /**
+   * Send an image file to a contact.
+   * @param contactId  E.164 phone number, e.g. "+919876543210"
+   * @param filePath   Absolute or relative path to the image file
+   * @param caption    Optional caption shown below the image
+   */
+  async sendImage(contactId: string, filePath: string, caption?: string): Promise<SendResult> {
+    if (!this.sock || !this.connected) {
+      return { success: false, error: 'WhatsApp not connected' };
+    }
+
+    const jid = contactId.replace(/^\+/, '') + '@s.whatsapp.net';
+
+    try {
+      const sent = await this.sock.sendMessage(jid, {
+        image: { url: filePath },
+        caption: caption ?? '',
+      });
+
+      logger.info({ jid, filePath }, 'WhatsApp image sent');
+      return { success: true, platformMessageId: sent?.key?.id ?? undefined };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error({ error, jid, filePath }, 'Failed to send WhatsApp image');
+      return { success: false, error: msg };
+    }
+  }
+
   // ─── LID probe ────────────────────────────────────────────────────────────
 
   /**

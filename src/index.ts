@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   // from WITHIN this process (same WhatsApp connection, no second session conflict).
   // Used exclusively by scripts/e2e-test.ts.
   app.post('/debug/run-for-contact', async (req, res) => {
-    const { contactName } = req.body as { contactName?: string };
+    const { contactName, actionOverride } = req.body as { contactName?: string; actionOverride?: string };
     if (!contactName) {
       res.status(400).json({ error: 'contactName is required' });
       return;
@@ -97,6 +97,7 @@ async function main(): Promise<void> {
       preferred_time_start: row.preferred_time_start,
       preferred_time_end:   row.preferred_time_end,
       notes:              row.notes,
+      action:             actionOverride ?? row.action,
       last_message_at:    null,   // treat as never messaged — forced due
       days_since_last_message: 9999,
     };

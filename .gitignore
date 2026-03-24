@@ -7,6 +7,7 @@ dist/
 # ─── Environment / secrets ────────────────────────────────────────────────────
 # NEVER commit these — they contain API keys and credentials
 .env
+Tools.md
 .env.local
 .env.*.local
 .env.production
