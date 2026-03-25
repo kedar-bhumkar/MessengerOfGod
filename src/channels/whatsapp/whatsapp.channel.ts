@@ -18,6 +18,10 @@ import { logger } from '../../utils/logger.js';
 const BACKOFF_BASE_MS = 3_000;
 const BACKOFF_MAX_MS  = 60_000;
 
+// How long to wait for a reconnect before giving up on a pending send
+const WAIT_FOR_CONNECTION_MS   = 30_000;
+const WAIT_POLL_INTERVAL_MS    =    500;
+
 // Codes that mean "reconnect" vs "give up"
 const RECONNECTABLE_CODES = new Set([
   DisconnectReason.connectionClosed,   // 428
@@ -172,6 +176,30 @@ export class WhatsAppChannel implements ChannelInterface {
     return this.connected;
   }
 
+  /**
+   * Wait until the socket is connected or the timeout expires.
+   * Used by send methods so a send that arrives during a brief reconnect window
+   * waits rather than immediately writing a failed row to Supabase.
+   */
+  private waitForConnection(): Promise<void> {
+    if (this.connected) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      const deadline = setTimeout(() => {
+        clearInterval(poll);
+        reject(new Error(`WhatsApp not connected (waited ${WAIT_FOR_CONNECTION_MS / 1000}s for reconnect)`));
+      }, WAIT_FOR_CONNECTION_MS);
+
+      const poll = setInterval(() => {
+        if (this.connected) {
+          clearInterval(poll);
+          clearTimeout(deadline);
+          resolve();
+        }
+      }, WAIT_POLL_INTERVAL_MS);
+    });
+  }
+
   /** Returns a snapshot of the WhatsApp connection state for the /health endpoint. */
   getStatus() {
     return {
@@ -198,8 +226,16 @@ export class WhatsAppChannel implements ChannelInterface {
    * @param contactId  E.164 phone number, e.g. "+919876543210"
    */
   async sendMessage(contactId: string, message: string): Promise<SendResult> {
-    if (!this.sock || !this.connected) {
-      return { success: false, error: 'WhatsApp not connected' };
+    if (!this.connected) {
+      logger.warn({ contactId }, 'WhatsApp not connected — waiting for reconnect before send');
+      try {
+        await this.waitForConnection();
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'WhatsApp not connected' };
+      }
+    }
+    if (!this.sock) {
+      return { success: false, error: 'WhatsApp socket not initialised' };
     }
 
     // "+919876543210" → "919876543210@s.whatsapp.net"
@@ -232,8 +268,16 @@ export class WhatsAppChannel implements ChannelInterface {
    * @param caption    Optional caption shown below the image
    */
   async sendImage(contactId: string, filePath: string, caption?: string): Promise<SendResult> {
-    if (!this.sock || !this.connected) {
-      return { success: false, error: 'WhatsApp not connected' };
+    if (!this.connected) {
+      logger.warn({ contactId }, 'WhatsApp not connected — waiting for reconnect before image send');
+      try {
+        await this.waitForConnection();
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : 'WhatsApp not connected' };
+      }
+    }
+    if (!this.sock) {
+      return { success: false, error: 'WhatsApp socket not initialised' };
     }
 
     const jid = contactId.replace(/^\+/, '') + '@s.whatsapp.net';

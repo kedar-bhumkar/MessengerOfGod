@@ -1,6 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { configRepository } from '../db/config.repository.js';
 import { processContact } from '../pipeline/message-pipeline.js';
+import { channelRegistry } from '../channels/channel.registry.js';
 import { isWithinTimeWindow, getCurrentTimeInZone, randomDelay } from '../utils/time.js';
 import { env } from '../env.js';
 import { logger } from '../utils/logger.js';
@@ -21,6 +22,21 @@ export function startScheduler(): ScheduledTask {
       lastTickAt = tickTime;
       lastTickContactsProcessed = 0;
       logger.info({ tickTime }, '─── Scheduler tick ───────────────────────────────');
+
+      // ── Step 0: abort early if any channel is unhealthy ──────────────────
+      // Avoids running the full AI pipeline and writing spurious 'failed' rows
+      // to Supabase when WhatsApp is mid-reconnect. The channel's sendMessage
+      // already has a waitForConnection() guard, but skipping here is cheaper.
+      for (const channel of channelRegistry.getAll()) {
+        const healthy = await channel.isHealthy();
+        if (!healthy) {
+          logger.warn(
+            { channelType: channel.channelType },
+            'Channel not healthy — skipping scheduler tick to avoid spurious failures',
+          );
+          return;
+        }
+      }
 
       // ── Step 1: fetch every contact the SQL function considers due ───────
       const dueContacts = await configRepository.getDueContacts();
