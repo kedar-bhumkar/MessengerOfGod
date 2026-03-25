@@ -397,19 +397,24 @@ export class WhatsAppChannel implements ChannelInterface {
               logConnectionEvent('fatal', 'Bad session — may need QR re-scan', statusCode);
             }
 
-            if (!this.closedByUser && RECONNECTABLE_CODES.has(statusCode)) {
+            if (!this.closedByUser) {
+              // Reconnect for ANY non-fatal close — known codes AND unknown ones.
+              // Previously unknown codes fell off silently (connected=false, no reconnect,
+              // no Supabase log). Now they are treated the same as known disconnect codes.
+              const isKnownCode = RECONNECTABLE_CODES.has(statusCode);
+
               this.reconnectAttempts++;
               const delay = Math.min(
                 BACKOFF_BASE_MS * 2 ** (this.reconnectAttempts - 1),
                 BACKOFF_MAX_MS,
               );
               logger.info(
-                { attempt: this.reconnectAttempts, delayMs: delay },
+                { attempt: this.reconnectAttempts, delayMs: delay, statusCode, knownCode: isKnownCode },
                 'Scheduling WhatsApp reconnect',
               );
               logConnectionEvent(
                 'disconnected',
-                `statusCode: ${statusCode ?? 'unknown'}`,
+                `statusCode: ${statusCode ?? 'unknown'}${isKnownCode ? '' : ' (unrecognised code — reconnecting anyway)'}`,
                 statusCode,
               );
               logConnectionEvent(
