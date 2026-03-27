@@ -163,6 +163,13 @@ export class WhatsAppChannel implements ChannelInterface {
   // Phone number we are connected as (e.g. "919764143433").
   private connectedAs: string | null = null;
 
+  // Stored reference to the boot() closure so the watchdog can trigger it.
+  private _bootFn: (() => Promise<void>) | null = null;
+
+  // Watchdog: fires every 5 min and force-reconnects if disconnected too long.
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
+
   // ─── Lifecycle ────────────────────────────────────────────────────────────
 
   async initialize(): Promise<void> {
@@ -170,6 +177,24 @@ export class WhatsAppChannel implements ChannelInterface {
     this.reconnectAttempts = 0;
     this.loadLidMap();   // preload persisted LID → phone mappings before first message arrives
     await this.startSocket();
+    this.startWatchdog();
+  }
+
+  private startWatchdog(): void {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = setInterval(() => {
+      if (this.connected || this.closedByUser || !this._bootFn) return;
+      const disconnectedMs = this.lastConnectedAt
+        ? Date.now() - this.lastConnectedAt.getTime()
+        : WhatsAppChannel.WATCHDOG_INTERVAL_MS;
+      if (disconnectedMs < WhatsAppChannel.WATCHDOG_INTERVAL_MS) return;
+      logger.warn(
+        { disconnectedSecs: Math.round(disconnectedMs / 1000) },
+        'Watchdog: WhatsApp disconnected too long — forcing reconnect',
+      );
+      this.reconnectAttempts++;
+      this._bootFn!().catch(err => logger.error({ err }, 'Watchdog reconnect failed'));
+    }, WhatsAppChannel.WATCHDOG_INTERVAL_MS);
   }
 
   async isHealthy(): Promise<boolean> {
@@ -213,6 +238,10 @@ export class WhatsAppChannel implements ChannelInterface {
 
   async shutdown(): Promise<void> {
     this.closedByUser = true;
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
     this.sock?.end(undefined);
     this.sock = null;
     this.connected = false;
@@ -338,6 +367,7 @@ export class WhatsAppChannel implements ChannelInterface {
       let initialised = false;
 
       const boot = async () => {
+        this._bootFn = boot; // keep reference so watchdog can call it
         // Re-read auth state from disk on every boot so that credentials
         // saved during the previous session are picked up correctly.
         const { state, saveCreds } = await useMultiFileAuthState(env.WHATSAPP_SESSION_DIR);
