@@ -106,22 +106,19 @@ export async function executeAction(
   action: string
 ): Promise<ActionResult[]> {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-  const model = 'claude-haiku-4-5-20251001';
+  const model = 'claude-sonnet-4-6';
 
   const systemPrompt =
     `You are an action executor for a personal messaging app called MessengerOfGod. ` +
-    `Your job is to carry out an action for a specific contact and decide what to send them. ` +
-    `Use the bash tool whenever you need to pick files, look things up, or generate content. ` +
-    `Always finish by calling return_result with the content to send.\n\n` +
-    `IMPORTANT RULES:\n` +
-    `- Always use bash to actually fetch/pick content — never fabricate or skip steps.\n` +
-    `- For historical events on today's date, use the Wikipedia "On This Day" API:\n` +
+    `Your job is to carry out a plain-English action for a specific contact and decide what to send them.\n\n` +
+    `RULES:\n` +
+    `- Always use the bash tool to actually fetch, pick, or look up content — never fabricate or skip steps.\n` +
+    `- For fetching live data (news, history, weather, etc.) use curl with appropriate public APIs.\n` +
+    `- For historical events on today's date, the Wikipedia On This Day API works well:\n` +
     `  curl -s "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/$(date +%m)/$(date +%d)"\n` +
-    `  Parse the JSON, extract 4–5 events, format them with year and description.\n` +
-    `- For web searches without a specific API, use:\n` +
-    `  curl -sL -A "Mozilla/5.0" "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=TOPIC&format=json&srlimit=3"\n` +
-    `- Keep text messages warm and personal (3–10 sentences max).\n` +
-    `- Do NOT return type=file unless you have an actual file path — use type=text for formatted text content.`;
+    `- Keep text messages warm, personal, and concise (3–10 sentences max).\n` +
+    `- Use type=text for formatted text — only use type=file/image when you have a real file path.\n` +
+    `- Always finish by calling return_result with all content to send.`;
 
   const userPrompt =
     `Contact: ${contact.contact_name}\n` +
