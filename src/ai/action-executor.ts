@@ -112,8 +112,16 @@ export async function executeAction(
     `You are an action executor for a personal messaging app called MessengerOfGod. ` +
     `Your job is to carry out an action for a specific contact and decide what to send them. ` +
     `Use the bash tool whenever you need to pick files, look things up, or generate content. ` +
-    `Always finish by calling return_result with the content to send. ` +
-    `Keep messages warm, personal, and concise (1–3 sentences for text).`;
+    `Always finish by calling return_result with the content to send.\n\n` +
+    `IMPORTANT RULES:\n` +
+    `- Always use bash to actually fetch/pick content — never fabricate or skip steps.\n` +
+    `- For historical events on today's date, use the Wikipedia "On This Day" API:\n` +
+    `  curl -s "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/$(date +%m)/$(date +%d)"\n` +
+    `  Parse the JSON, extract 4–5 events, format them with year and description.\n` +
+    `- For web searches without a specific API, use:\n` +
+    `  curl -sL -A "Mozilla/5.0" "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=TOPIC&format=json&srlimit=3"\n` +
+    `- Keep text messages warm and personal (3–10 sentences max).\n` +
+    `- Do NOT return type=file unless you have an actual file path — use type=text for formatted text content.`;
 
   const userPrompt =
     `Contact: ${contact.contact_name}\n` +
