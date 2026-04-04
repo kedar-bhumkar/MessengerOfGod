@@ -15,13 +15,16 @@ const envSchema = z.object({
   // Anthropic (Claude action executor)
   ANTHROPIC_API_KEY: z.string(),
 
+  // Tavily (web search tool for action executor)
+  TAVILY_API_KEY: z.string(),
+
   // WhatsApp (Baileys — personal number via WhatsApp Web protocol)
   // Path to the directory where Baileys saves the linked-device session.
   // The QR code is only needed once; subsequent starts reconnect automatically.
   WHATSAPP_SESSION_DIR: z.string().default('./whatsapp-session'),
 
   // Scheduler
-  SCHEDULER_CRON: z.string().default('*/30 * * * *'),
+  SCHEDULER_CRON: z.string().default('0 * * * *'),
   MAX_MESSAGES_PER_RUN: z.coerce.number().default(20),
   MIN_DELAY_BETWEEN_MESSAGES_MS: z.coerce.number().default(30000),
   MAX_DELAY_BETWEEN_MESSAGES_MS: z.coerce.number().default(120000),

@@ -11,6 +11,7 @@
 // ============================================================================
 
 import Anthropic from '@anthropic-ai/sdk';
+import { tavily } from '@tavily/core';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { logger } from '../utils/logger.js';
@@ -40,6 +41,19 @@ export interface ActionResultItem {
 }
 
 const TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'web_search',
+    description:
+      'Search the web for current information, news, or any topic. ' +
+      'Returns a list of relevant results with titles, URLs, and content snippets.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'The search query' },
+      },
+      required: ['query'],
+    },
+  },
   {
     name: 'bash',
     description:
@@ -112,12 +126,11 @@ export async function executeAction(
     `You are an action executor for a personal messaging app called MessengerOfGod. ` +
     `Your job is to carry out a plain-English action for a specific contact and decide what to send them.\n\n` +
     `RULES:\n` +
-    `- Always use the bash tool to actually fetch, pick, or look up content — never fabricate or skip steps.\n` +
-    `- For fetching live data (news, history, weather, etc.) use curl with appropriate public APIs.\n` +
-    `- For historical events on today's date, the Wikipedia On This Day API works well:\n` +
-    `  curl -s "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/$(date +%m)/$(date +%d)"\n` +
+    `- Never fabricate content — always use tools to fetch or pick real data.\n` +
+    `- Use web_search for any live data: news, historical events, weather, sports, etc.\n` +
+    `- Use bash for file operations (picking images, renaming files, reading local data).\n` +
     `- Keep text messages warm, personal, and concise (3–10 sentences max).\n` +
-    `- Use type=text for formatted text — only use type=file/image when you have a real file path.\n` +
+    `- Use type=text for formatted text — only use type=image/file when you have a real file path.\n` +
     `- Always finish by calling return_result with all content to send.`;
 
   const userPrompt =
@@ -182,23 +195,41 @@ export async function executeAction(
       break;
     }
 
-    // Execute bash tool calls
+    // Execute tool calls
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of response.content) {
-      if (block.type === 'tool_use' && block.name === 'bash') {
-        const command = (block.input as { command: string }).command;
-        logger.debug({ command }, 'Action executor: running bash command');
+    const tavilyClient = tavily({ apiKey: env.TAVILY_API_KEY });
 
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue;
+
+      if (block.name === 'web_search') {
+        const query = (block.input as { query: string }).query;
+        logger.debug({ query }, 'Action executor: web_search');
         let output: string;
         try {
-          const { stdout, stderr } = await execAsync(command, {
-            timeout: BASH_TIMEOUT_MS,
-          });
+          const result = await tavilyClient.search(query, { maxResults: 5 });
+          output = result.results
+            .map((r) => `[${r.title}](${r.url})\n${r.content}`)
+            .join('\n\n');
+        } catch (err) {
+          output = `Search error: ${err instanceof Error ? err.message : String(err)}`;
+        }
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: output.slice(0, MAX_OUTPUT_CHARS),
+        });
+
+      } else if (block.name === 'bash') {
+        const command = (block.input as { command: string }).command;
+        logger.debug({ command }, 'Action executor: bash');
+        let output: string;
+        try {
+          const { stdout, stderr } = await execAsync(command, { timeout: BASH_TIMEOUT_MS });
           output = (stdout + stderr).trim() || '(no output)';
         } catch (err) {
           output = `Error: ${err instanceof Error ? err.message : String(err)}`;
         }
-
         toolResults.push({
           type: 'tool_result',
           tool_use_id: block.id,
