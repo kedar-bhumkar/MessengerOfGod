@@ -32,6 +32,13 @@ export interface ActionResult {
   completionTokens: number;
 }
 
+export interface ActionResultItem {
+  type: 'text' | 'image' | 'file';
+  text?: string;
+  filePath?: string;
+  caption?: string;
+}
+
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'bash',
@@ -49,29 +56,41 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'return_result',
     description:
-      'Call this when you know exactly what to send. This terminates the agent loop.',
+      'Call this when you are ready to send all content. Pass an array of results — ' +
+      'one entry per message to send. They will be delivered in order. ' +
+      'This terminates the agent loop.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        type: {
-          type: 'string',
-          enum: ['text', 'image', 'file'],
-          description: 'Type of content to send',
-        },
-        text: {
-          type: 'string',
-          description: 'The message text (required when type=text)',
-        },
-        filePath: {
-          type: 'string',
-          description: 'Absolute path to the file to send (required when type=image or file)',
-        },
-        caption: {
-          type: 'string',
-          description: 'Optional caption to accompany an image or file',
+        results: {
+          type: 'array',
+          description: 'Ordered list of messages/media to send to the contact',
+          items: {
+            type: 'object',
+            properties: {
+              type: {
+                type: 'string',
+                enum: ['text', 'image', 'file'],
+                description: 'Type of content to send',
+              },
+              text: {
+                type: 'string',
+                description: 'The message text (required when type=text)',
+              },
+              filePath: {
+                type: 'string',
+                description: 'Absolute path to the file (required when type=image or file)',
+              },
+              caption: {
+                type: 'string',
+                description: 'Optional caption for an image or file',
+              },
+            },
+            required: ['type'],
+          },
         },
       },
-      required: ['type'],
+      required: ['results'],
     },
   },
 ];
@@ -85,7 +104,7 @@ const TOOLS: Anthropic.Tool[] = [
 export async function executeAction(
   contact: DueContact,
   action: string
-): Promise<ActionResult> {
+): Promise<ActionResult[]> {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   const model = 'claude-haiku-4-5-20251001';
 
@@ -126,25 +145,20 @@ export async function executeAction(
     // Check for return_result
     for (const block of response.content) {
       if (block.type === 'tool_use' && block.name === 'return_result') {
-        const input = block.input as {
-          type: string;
-          text?: string;
-          filePath?: string;
-          caption?: string;
-        };
+        const input = block.input as { results: ActionResultItem[] };
         logger.info(
-          { contact: contact.contact_name, resultType: input.type },
+          { contact: contact.contact_name, count: input.results.length },
           'Action executor: return_result received'
         );
-        return {
-          type: input.type as 'text' | 'image' | 'file',
-          text: input.text,
-          filePath: input.filePath,
-          caption: input.caption,
+        return input.results.map((item) => ({
+          type: item.type as 'text' | 'image' | 'file',
+          text: item.text,
+          filePath: item.filePath,
+          caption: item.caption,
           model,
           promptTokens: totalPromptTokens,
           completionTokens: totalCompletionTokens,
-        };
+        }));
       }
     }
 
@@ -152,13 +166,13 @@ export async function executeAction(
     if (response.stop_reason === 'end_turn') {
       const textBlock = response.content.find((b) => b.type === 'text');
       if (textBlock && textBlock.type === 'text' && textBlock.text.trim()) {
-        return {
+        return [{
           type: 'text',
           text: textBlock.text.trim(),
           model,
           promptTokens: totalPromptTokens,
           completionTokens: totalCompletionTokens,
-        };
+        }];
       }
       break;
     }
@@ -199,11 +213,11 @@ export async function executeAction(
     { contact: contact.contact_name },
     'Action executor: max iterations reached, using fallback message'
   );
-  return {
+  return [{
     type: 'text',
     text: `Hey ${contact.contact_name}, just thinking of you! Hope you're doing well.`,
     model,
     promptTokens: totalPromptTokens,
     completionTokens: totalCompletionTokens,
-  };
+  }];
 }

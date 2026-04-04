@@ -34,71 +34,67 @@ export async function processContact(dueContact: DueContact): Promise<PipelineRe
 
     // Step 2: Execute the action via Claude sub-agent
     logger.info({ ...contactLog, action: dueContact.action }, 'Executing action for contact');
-    const result = await executeAction(dueContact, dueContact.action);
+    const results = await executeAction(dueContact, dueContact.action);
+    logger.info({ ...contactLog, count: results.length }, 'Action executor returned results');
 
-    // Step 3: Send via channel
-    logger.info({ ...contactLog, resultType: result.type }, 'Sending via channel');
-    let sendResult;
-    const messageText = result.type === 'text'
-      ? (result.text ?? '')
-      : (result.caption ?? '');
+    // Step 3 & 4: Send each result and record it
+    let lastError: string | undefined;
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
 
-    if (result.type === 'image' && result.filePath) {
-      sendResult = await channel.sendImage(
-        dueContact.unique_contact_id,
-        result.filePath,
-        result.caption
-      );
-    } else if (result.type === 'file' && result.filePath) {
-      // Fall back to sendMessage with the file path as text until file sending is implemented
-      sendResult = await channel.sendMessage(
-        dueContact.unique_contact_id,
-        result.caption ?? result.filePath
-      );
-    } else {
-      sendResult = await channel.sendMessage(
-        dueContact.unique_contact_id,
-        result.text ?? ''
-      );
+      // Small human-like delay between messages (skip before first)
+      if (i > 0) await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000));
+
+      logger.info({ ...contactLog, resultType: result.type, index: i }, 'Sending via channel');
+
+      let sendResult;
+      if (result.type === 'image' && result.filePath) {
+        sendResult = await channel.sendImage(
+          dueContact.unique_contact_id,
+          result.filePath,
+          result.caption
+        );
+      } else if (result.type === 'file' && result.filePath) {
+        sendResult = await channel.sendMessage(
+          dueContact.unique_contact_id,
+          result.caption ?? result.filePath
+        );
+      } else {
+        sendResult = await channel.sendMessage(
+          dueContact.unique_contact_id,
+          result.text ?? ''
+        );
+      }
+
+      const status = sendResult.success ? 'sent' : 'failed';
+      await messageRepository.create({
+        config_id: dueContact.config_id,
+        message: result.type === 'image'
+          ? `[image: ${result.filePath}] ${result.caption ?? ''}`.trim()
+          : (result.text ?? ''),
+        direction: 'outbound' as const,
+        status,
+        error_details: sendResult.error ?? null,
+        ai_model_used: result.model,
+        ai_prompt_tokens: result.promptTokens,
+        ai_completion_tokens: result.completionTokens,
+      });
+
+      if (!sendResult.success) {
+        logger.warn({ ...contactLog, error: sendResult.error, index: i }, 'Failed to send result');
+        lastError = sendResult.error ?? 'Send failed with unknown error';
+      }
     }
 
-    // Step 4: Record in message history
-    const status = sendResult.success ? 'sent' : 'failed';
-    await messageRepository.create({
-      config_id: dueContact.config_id,
-      message: result.type === 'image'
-        ? `[image: ${result.filePath}] ${result.caption ?? ''}`.trim()
-        : (result.text ?? ''),
-      direction: 'outbound' as const,
-      status,
-      error_details: sendResult.error ?? null,
-      ai_model_used: result.model,
-      ai_prompt_tokens: result.promptTokens,
-      ai_completion_tokens: result.completionTokens,
-    });
-
-    if (!sendResult.success) {
-      logger.warn(
-        { ...contactLog, error: sendResult.error },
-        'Action executed but failed to send'
-      );
-      return {
-        success: false,
-        contactName: dueContact.contact_name,
-        message: messageText,
-        error: sendResult.error ?? 'Send failed with unknown error',
-      };
+    if (lastError) {
+      return { success: false, contactName: dueContact.contact_name, error: lastError };
     }
 
-    logger.info(
-      { ...contactLog, resultType: result.type },
-      'Message sent successfully'
-    );
-
+    logger.info({ ...contactLog, count: results.length }, 'All results sent successfully');
     return {
       success: true,
       contactName: dueContact.contact_name,
-      message: messageText,
+      message: results.map((r) => r.text ?? r.caption ?? r.filePath ?? '').join(' | '),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
