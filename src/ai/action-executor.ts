@@ -150,8 +150,20 @@ export async function executeAction(
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
 
+  // Warn Claude when nearing the limit so it wraps up
+  const WRAP_UP_AT_ITERATION = MAX_ITERATIONS - 5;
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     logger.info({ contact: contact.contact_name, iteration: i + 1, maxIterations: MAX_ITERATIONS }, 'Action executor: iteration');
+
+    // At the wrap-up threshold, inject a user message telling Claude to stop searching and return now
+    if (i === WRAP_UP_AT_ITERATION && messages[messages.length - 1]?.role !== 'user') {
+      messages.push({
+        role: 'user',
+        content: 'You are running low on iterations. Stop searching and call return_result NOW with whatever events you have gathered so far. Do not do any more web searches.',
+      });
+    }
+
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
