@@ -19,7 +19,7 @@ import { env } from '../env.js';
 import type { DueContact } from '../db/types.js';
 
 const execAsync = promisify(exec);
-const MAX_ITERATIONS = 25;
+const MAX_ITERATIONS = 40;
 const BASH_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_CHARS = 4_000;
 
@@ -129,6 +129,8 @@ export async function executeAction(
     `- Never fabricate content — always use tools to fetch or pick real data.\n` +
     `- Use web_search for any live data: news, historical events, weather, sports, etc.\n` +
     `- Use bash for file operations (picking images, renaming files, reading local data).\n` +
+    `- Be efficient: use broad search queries that cover multiple topics at once. ` +
+    `Prefer 3–5 searches total over one search per sub-topic.\n` +
     `- Keep text messages warm, personal, and concise (3–10 sentences max).\n` +
     `- Use type=text for formatted text — only use type=image/file when you have a real file path.\n` +
     `- Always finish by calling return_result with all content to send.`;
