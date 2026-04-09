@@ -21,7 +21,7 @@ import type { DueContact } from '../db/types.js';
 const execAsync = promisify(exec);
 const MAX_ITERATIONS = 40;
 const BASH_TIMEOUT_MS = 10_000;
-const MAX_OUTPUT_CHARS = 4_000;
+const MAX_OUTPUT_CHARS = 8_000;
 
 export interface ActionResult {
   type: 'text' | 'image' | 'file';
@@ -151,6 +151,7 @@ export async function executeAction(
   let totalCompletionTokens = 0;
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    logger.info({ contact: contact.contact_name, iteration: i + 1, maxIterations: MAX_ITERATIONS }, 'Action executor: iteration');
     const response = await client.messages.create({
       model,
       max_tokens: 4096,
@@ -232,7 +233,7 @@ export async function executeAction(
         logger.debug({ query }, 'Action executor: web_search');
         let output: string;
         try {
-          const result = await tavilyClient.search(query, { maxResults: 5 });
+          const result = await tavilyClient.search(query, { maxResults: 10 });
           const hits = Array.isArray(result.results) ? result.results : [];
           output = hits.length > 0
             ? hits.map((r) => `[${r.title}](${r.url})\n${r.content}`).join('\n\n')
