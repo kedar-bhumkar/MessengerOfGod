@@ -19,7 +19,7 @@ import { env } from '../env.js';
 import type { DueContact } from '../db/types.js';
 
 const execAsync = promisify(exec);
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 25;
 const BASH_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_CHARS = 4_000;
 
@@ -151,7 +151,7 @@ export async function executeAction(
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     const response = await client.messages.create({
       model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemPrompt,
       tools: TOOLS,
       messages,
