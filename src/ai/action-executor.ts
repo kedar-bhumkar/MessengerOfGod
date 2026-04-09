@@ -163,12 +163,29 @@ export async function executeAction(
     // Check for return_result
     for (const block of response.content) {
       if (block.type === 'tool_use' && block.name === 'return_result') {
-        const input = block.input as { results: ActionResultItem[] };
-        logger.info(
-          { contact: contact.contact_name, count: input.results.length },
-          'Action executor: return_result received'
-        );
-        return input.results.map((item) => ({
+        const input = block.input as {
+          results?: ActionResultItem[];
+          // backward-compat: Claude may still use old single-object format
+          type?: string;
+          text?: string;
+          filePath?: string;
+          caption?: string;
+        };
+
+        // Normalise: accept both {results:[...]} and legacy {type,text,...}
+        const items: ActionResultItem[] = Array.isArray(input.results) && input.results.length > 0
+          ? input.results
+          : input.type
+            ? [{ type: input.type as ActionResultItem['type'], text: input.text, filePath: input.filePath, caption: input.caption }]
+            : [];
+
+        if (items.length === 0) {
+          logger.warn({ contact: contact.contact_name }, 'return_result had no items — skipping');
+          break;
+        }
+
+        logger.info({ contact: contact.contact_name, count: items.length }, 'Action executor: return_result received');
+        return items.map((item) => ({
           type: item.type as 'text' | 'image' | 'file',
           text: item.text,
           filePath: item.filePath,
@@ -208,9 +225,10 @@ export async function executeAction(
         let output: string;
         try {
           const result = await tavilyClient.search(query, { maxResults: 5 });
-          output = result.results
-            .map((r) => `[${r.title}](${r.url})\n${r.content}`)
-            .join('\n\n');
+          const hits = Array.isArray(result.results) ? result.results : [];
+          output = hits.length > 0
+            ? hits.map((r) => `[${r.title}](${r.url})\n${r.content}`).join('\n\n')
+            : '(no results found)';
         } catch (err) {
           output = `Search error: ${err instanceof Error ? err.message : String(err)}`;
         }
