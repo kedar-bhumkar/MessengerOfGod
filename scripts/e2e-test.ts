@@ -126,12 +126,15 @@ async function runE2ETest(): Promise<void> {
   console.log(`     window=${contact.preferred_time_start}–${contact.preferred_time_end}\n`);
 
   // Snapshot for cleanup
-  const originalActive     = contact.active;
   const originalTimeStart  = contact.preferred_time_start;
   const originalTimeEnd    = contact.preferred_time_end;
 
-  // ── Step 2: patch → active + in-window ────────────────────────────────────
-  console.log('Step 2 — Patching contact to be active and within sending window...');
+  // ── Step 2: patch time window to include now ───────────────────────────────
+  // Note: we do NOT touch `active` — the /debug/run-for-contact endpoint
+  // bypasses the active check, and changing active would conflict with the
+  // (unique_contact_id, active, channel_type) unique constraint if another
+  // row already occupies the active=true slot for this phone+channel.
+  console.log('Step 2 — Patching preferred_time window to include now...');
 
   const now       = new Date();
   const winStart  = toHHMM(addMinutes(now, -30), contact.timezone);  // 30 min ago
@@ -142,7 +145,6 @@ async function runE2ETest(): Promise<void> {
   const { error: patchErr } = await supabase
     .from('config')
     .update({
-      active:               true,
       preferred_time_start: winStart,
       preferred_time_end:   winEnd,
     })
@@ -234,7 +236,6 @@ async function runE2ETest(): Promise<void> {
   const { error: restoreErr } = await supabase
     .from('config')
     .update({
-      active:               originalActive,
       preferred_time_start: originalTimeStart,
       preferred_time_end:   originalTimeEnd,
     })
